@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+  <head>
+
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="normalize.css">
+    <link rel="stylesheet" href="skeleton.css">
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script type="text/javascript" src="https://dl.frontapp.com/libs/frontjs.min.js"></script>
+    <script type="text/javascript" src="test-plugin.js"></script>
+    <style>
+      h3 {
+        text-align: center;
+      }
+      #signout-button, #authorize-button {
+        margin: auto;
+      }
+      p {
+        margin: 10px;
+        text-align: center;
+      }
+      #refresh {
+        border: none;
+        text-transform: none;
+        font-size: 1em;
+      }
+      .centered-div {
+        text-align: center;
+      }
+      #scrollbox {
+        white-space: pre-wrap;
+        max-height: 200px;
+        width: 90%;
+        overflow: scroll;
+        margin: auto;
+        background-color: white;
+      }
+      select, button, input {
+        max-height: 20px;
+        line-height: 0;
+        margin-bottom: 0;
+        max-width: 170px;
+      }
+      #output {
+        margin: 10px;
+      }
+      .reservations-info {
+        text-align: left;
+        margin: auto;
+        width: auto;
+        display: inline-block;
+      }
+
+    </style>
+
+  </head>
+  <body>
+    <div class="centered-div"><button id="refresh" onclick="return false">&#8634; Refresh</button></div>
+
+    <h3></h3>
+
+    <div id="output"></div>
+
+    <pre id="content"></pre>
+
+    <!--Add buttons to initiate auth sequence and sign out-->
+    <br><br>
+    <button id="authorize-button" style="display: none;">Authorize</button>
+    <button id="signout-button" style="display: none;">Sign Out</button>
+
+
+    <script type="text/javascript">
+      // var remember;
+      // data = {"contact":{"display_name":"Leigh Abramson"}} //for testing in browser
+
+      // Client ID and API key from the Developer Console
+      // var CLIENT_ID = '590936402413-hr4uj4vasgeirpc507ehr3s4k3nchh9b.apps.googleusercontent.com';
+      var CLIENT_ID = '590936402413-ekldjntepkacpj9g0dk0j3uijq9mvvmg.apps.googleusercontent.com';
+
+      // Array of API discovery doc URLs for APIs used by the quickstart
+      var DISCOVERY_DOCS = ["https://sheets.googleapis.com/$discovery/rest?version=v4"];
+
+      // Authorization scopes required by the API; multiple scopes can be
+      // included, separated by spaces.
+      var SCOPES = "https://www.googleapis.com/auth/spreadsheets";
+
+      var authorizeButton = document.getElementById('authorize-button');
+      var signoutButton = document.getElementById('signout-button');
+
+      /**
+       *  On load, called to load the auth2 library and API client library.
+       */
+      function handleClientLoad() {
+        gapi.load('client:auth2', initClient);
+      }
+
+      /**
+       *  Initializes the API client library and sets up sign-in state
+       *  listeners.
+       */
+      function initClient() {
+        gapi.client.init({
+          discoveryDocs: DISCOVERY_DOCS,
+          clientId: CLIENT_ID,
+          scope: SCOPES
+        }).then(function () {
+          // Listen for sign-in state changes.
+          gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
+
+          // Handle the initial sign-in state.
+          updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());
+          authorizeButton.onclick = handleAuthClick;
+          signoutButton.onclick = handleSignoutClick;
+        });
+      }
+
+      /**
+       *  Called when the signed in status changes, to update the UI
+       *  appropriately. After a sign-in, the API is called.
+       */
+      function updateSigninStatus(isSignedIn) {
+        if (isSignedIn) {
+          authorizeButton.style.display = 'none';
+          signoutButton.style.display = 'block';
+          collectContactInfo();
+        } else {
+          authorizeButton.style.display = 'block';
+          signoutButton.style.display = 'none';
+        }
+      }
+
+      /**
+       *  Sign in the user upon button click.
+       */
+      function handleAuthClick(event) {
+        gapi.auth2.getAuthInstance().signIn();
+      }
+
+      /**
+       *  Sign out the user upon button click.
+       */
+      function handleSignoutClick(event) {
+        gapi.auth2.getAuthInstance().signOut();
+      }
+
+
+      contactInfo = {}
+      contactInfo2 = {}
+      past_reservations = {}
+      future_reservations = {}
+      
+      function minTommss(serial){
+        if (serial==0.00) {return ""};
+        var utc_days  = Math.floor(serial - 25569);
+        var utc_value = utc_days * 86400;                                        
+        var date_info = new Date(utc_value * 1000);
+        var fractional_day = serial - Math.floor(serial) + 0.0000001;
+        var total_seconds = Math.floor(86400 * fractional_day);
+        var seconds = total_seconds % 60;
+        total_seconds -= seconds;
+        var hours = Math.floor(total_seconds / (60 * 60));
+        var minutes = Math.floor(total_seconds / 60) % 60;
+        return hours + ":" + minutes + ":" + seconds
+      }
+
+      function minTommssFull(serial){
+        if (serial==0.00) {return ""};
+        var utc_days  = Math.floor(serial - 25569);
+        var utc_value = utc_days * 86400;                                        
+        var date_info = new Date(utc_value * 1000);
+        var fractional_day = serial - Math.floor(serial) + 0.0000001;
+        var total_seconds = Math.floor(86400 * fractional_day);
+        var seconds = total_seconds % 60;
+        total_seconds -= seconds;
+        var hours = Math.floor(total_seconds / (60 * 60));
+        var minutes = Math.floor(total_seconds / 60) % 60;
+        return new Date(date_info.getFullYear(), date_info.getMonth(), date_info.getDate()+1, hours, minutes, seconds);
+      }
+
+      function addZeros(number) {
+        if (number.toString().length < 2) {return "0" + number.toString()}
+        else { return number.toString() };
+      }
+
+      function formatTime(time) {
+        if (time == "NaN:NaN:NaN" || time == "") {return ""};
+        time = time.toString().split(":")
+        return addZeros(time[0])+":"+addZeros(time[1])
+      }
+
+      function statusChange(id) {
+        value = $("#status"+id).find(':selected').text()
+        updateCell(value, "L" + id)
+        $('#output').html('');
+        collectContactInfo();
+      }
+      
+      function inviteChange(id) {
+        value = $("#invite"+id).find(':selected').text()
+        updateCell(value, "M" + id)
+        $('#output').html('');
+        collectContactInfo();
+      }
+
+      function confirmedChange(id) {
+        value = $("#confirmed"+id).val();
+        updateCell(value, "O" + id)
+        $('#output').html('');
+        collectContactInfo();
+      }
+
+      function display(array, array2, name) {
+        $('#output').append("<div id='loaded'>.</div>")
+
+        var part1 = "<p>Email: " + array[0] + "<br>Phone: " + array[1] + "<br>Restaurant: " + array[2] + "</p><p>Profile: </p><div id='scrollbox'>" + array[3] + "</div><p>Requests: " + array2[0] + "<br>Request frequency: " + array2[1] + "<br>Success rate: " + array2[2] + "</p>"
+
+        var part3 = "<p id='checkMe'><b>Recent reservations: </b></p><div class='centered-div'><br>"
+
+        if (name in past_reservations) {
+
+          for (var i = past_reservations[name].length-1; i>=0; i--) {
+            part3 += "<div class='reservations-info'>" + past_reservations[name][i][1] +
+            ",  " + past_reservations[name][i][2] +
+            ", " + past_reservations[name][i][3] + " people" +
+            ", " + past_reservations[name][i][4] +
+            "<br><b>Preferred Exact Time: </b>" + formatTime(past_reservations[name][i][7]) +
+            ", <b>Confirmed Time: </b>" + formatTime(past_reservations[name][i][5]) +
+            ", <b>Calendar Invite: </b>" + past_reservations[name][i][6] + "<br>" +
+            "<br>Change Status: <select id=status"+past_reservations[name][i][0]+" name='status'>" +
+              "<option value='volvo'></option>" +
+              "<option value='volvo'>CANCELED</option>" +
+              "<option value='saab'>NM PENDING</option>" +
+              "<option value='fiat'>BOL PENDING</option>" +
+              "<option value='audi'>DONE</option>" +
+              "<option value='audi'>DONE 2ND CHOICE</option>" +
+              "<option value='audi'>NOT POSSIBLE</option>" +
+              "<option value='audi'>FUTURE REQUEST</option>" +
+              "<option value='audi'>DID NOT TAKE</option>" +
+              "<option value='audi'>ELG PENDING</option>" +
+            "</select>" +
+            "<button id=status-button-"+past_reservations[name][i][0]+" class='submit-change' " +
+            "onclick='statusChange("+past_reservations[name][i][0]+")'>submit change</button><br>" +
+            "Change Invite: <select id=invite"+past_reservations[name][i][0]+" name='invite'>" +
+              "<option value='volvo'></option>" +
+              "<option value='volvo'>Send</option>" +
+            "</select>" +
+            "<button id=invite-button-"+past_reservations[name][i][0]+" class='submit-change' " +
+            "onclick='inviteChange("+past_reservations[name][i][0]+")'>submit change</button><br>" +
+            "Change Confirmed Time: <input type='text' id=confirmed"+past_reservations[name][i][0]+"></input>" +
+            "<button id=invite-button-"+past_reservations[name][i][0]+" class='submit-change' " +
+            "onclick='confirmedChange("+past_reservations[name][i][0]+")'>submit change</button></div><hr>"
+          };
+        };
+        part3 += "</div>"
+
+        var part2 = "<p><b>Future reservations: </b></p><div class='centered-div'><br>"
+        if (name in future_reservations) {
+          for (var i = future_reservations[name].length-1; i>=0; i--) {
+            part2 += "<div class='reservations-info'>" + future_reservations[name][i][1] +
+            ",  " + future_reservations[name][i][2] +
+            ", " + future_reservations[name][i][3] + " people" +
+            ", " + future_reservations[name][i][4] +
+            "<br><b>Prefered Exact Time: </b>" + formatTime(future_reservations[name][i][7]) +
+            ", <b>Confirmed Time: </b>" + formatTime(future_reservations[name][i][5]) +
+            ", <b>Calendar Invite: </b>" + future_reservations[name][i][6] + "<br>" +
+            "<br>Change Status: <select id=status"+future_reservations[name][i][0]+" name='status'>" +
+              "<option value='volvo'></option>" +
+              "<option value='volvo'>CANCELED</option>" +
+              "<option value='saab'>NM PENDING</option>" +
+              "<option value='fiat'>BOL PENDING</option>" +
+              "<option value='audi'>DONE</option>" +
+              "<option value='audi'>DONE 2ND CHOICE</option>" +
+              "<option value='audi'>NOT POSSIBLE</option>" +
+              "<option value='audi'>FUTURE REQUEST</option>" +
+              "<option value='audi'>DID NOT TAKE</option>" +
+              "<option value='audi'>ELG PENDING</option>" +
+            "</select>" +
+            "<button id=status-button-"+future_reservations[name][i][0]+" class='submit-change' " +
+            "onclick='statusChange("+future_reservations[name][i][0]+")'>submit change</button><br>" +
+            "Change Invite: <select id=invite"+future_reservations[name][i][0]+" name='invite'>" +
+              "<option value='volvo'></option>" +
+              "<option value='volvo'>Send</option>" +
+            "</select>" +
+            "<button id=invite-button-"+future_reservations[name][i][0]+" class='submit-change' " +
+            "onclick='inviteChange("+future_reservations[name][i][0]+")'>submit change</button><br>" +
+            "Change Confirmed Time: <input type='text' id=confirmed"+future_reservations[name][i][0]+"></input>" +
+            "<button id=invite-button-"+future_reservations[name][i][0]+" class='submit-change' " +
+            "onclick='confirmedChange("+future_reservations[name][i][0]+")'>submit change</button></div><hr>"
+          };
+        };
+        part2 += "</div>"
+
+        $('#output').html(part1 + part2 + part3)
+      }
+
+      function frontOn(name) {
+        display(contactInfo[name], contactInfo2[name], name)
+      }
+
+      function collectContactInfo() {
+
+        var refreshIntervalId = setInterval(function(){ 
+          if ($('#loaded').val()==undefined || $('#checkMe').val()==undefined) {
+            console.log("hi")
+            clearInterval(refreshIntervalId);
+          }
+          // if ($('#loaded').val()!=undefined && $('#checkMe').val()!=undefined) {
+          // else {
+            console.log("ho")
+            console.log($('#checkMe').val())
+            console.log($('#loaded').val())
+            frontOn(data.contact.display_name);            
+          // };
+        }, 6000);
+
+        gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: '12FB3gJRZRk0Pp9aZTZxNu3N49xdrabDNg-pwJjCI638',
+            range: 'Master Contact',
+          }).then(function(response) {
+            var range = response.result;
+            for (var i = 2; i < range.values.length; i++) {
+              contactInfo[range.values[i][0]] = [range.values[i][7], range.values[i][8], range.values[i][4], range.values[i][23]]
+            };
+          }, function(response) {
+            console.log('Error: ' + response.result.error.message);
+          }); 
+
+          gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: '12FB3gJRZRk0Pp9aZTZxNu3N49xdrabDNg-pwJjCI638',
+            range: 'FAQs by Members',
+          }).then(function(response) {
+            var range = response.result;
+
+            for (var i = 2; i < range.values.length; i++) {
+              contactInfo2[range.values[i][0]] = [range.values[i][5], range.values[i][7], range.values[i][13]]
+            };
+
+          }, function(response) {
+            console.log('Error: ' + response.result.error.message);
+        });
+
+        gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: '1CYJxaWG77ul918c1xEjlGdslHM4ataRcvh1hD8M_cP8',
+            range: 'RESERVATIONS',
+            valueRenderOption: 'UNFORMATTED_VALUE',
+          }).then(function(response) {
+            var range = response.result;
+
+            for (var i = 2; i < range.values.length; i++) {
+              past_reservations[range.values[i][1]] = []
+              future_reservations[range.values[i][1]] = []
+          };
+            
+          months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+          for (var i = 2; i < range.values.length; i++) {
+
+            var date = range.values[i][3]
+            if (date!=undefined) {
+              var nowdate = new Date()
+              var date = new Date(minTommssFull(date))
+              var date_pretty = months[date.getMonth()] + " " + date.getDate()
+              var difference =  Math.round(Math.abs((nowdate.getTime() - date.getTime())/(24*60*60*1000)));
+
+                if (nowdate > date) {
+                  if (difference < 60) {
+                    past_reservations[range.values[i][1]].push([i+1, range.values[i][2], date_pretty, range.values[i][4], range.values[i][11], minTommss(range.values[i][14]), range.values[i][12], minTommss(range.values[i][6])])
+                  }
+                }
+                else {
+                  future_reservations[range.values[i][1]].push([i+1, range.values[i][2], date_pretty, range.values[i][4], range.values[i][11], minTommss(range.values[i][14]), range.values[i][12], minTommss(range.values[i][6])])
+                };
+            };
+          };
+
+        }, function(response) {
+          console.log('Error: ' + response.result.error.message);
+        });
+      }
+
+      function updateCell(input, location) {
+        var params = {
+          // The ID of the spreadsheet to update.
+          spreadsheetId: '1CYJxaWG77ul918c1xEjlGdslHM4ataRcvh1hD8M_cP8',
+
+          // The A1 notation of a range to search for a logical table of data.
+          range: 'RESERVATIONS!'+location+":"+location,
+
+          // How the input data should be interpreted.
+          valueInputOption: "USER_ENTERED",
+        };
+
+        var valueRangeBody = {
+          "majorDimension": "COLUMNS",
+          "values": [[input]]
+        };
+
+        var request = gapi.client.sheets.spreadsheets.values.update(params, valueRangeBody);
+        request.then(function(response) {
+          console.log(response.result);
+        }, function(reason) {
+          console.error('error: ' + reason.result.error.message);
+        });
+      }
+
+      Front.on('conversation', function (data) {
+        console.log("look at this: " + data)
+        $('#output').html('');
+        name = data.contact.display_name
+        // remember = name
+        if (name.split(', ')[1]!=undefined) {
+          name = name.split(', ')[1] + " " + name.split(', ')[0]
+        };
+        $('h3').html(name)
+        frontOn(name);
+      });
+
+      $('#refresh').click(function() { 
+        console.log(name)
+        $('#output').html('');
+        collectContactInfo();
+      });
+
+
+    </script>
+
+    <script async defer src="https://apis.google.com/js/api.js"
+      onload="this.onload=function(){};handleClientLoad()"
+      onreadystatechange="if (this.readyState === 'complete') this.onload()">
+    </script>
+  </body>
+</html>
